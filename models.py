@@ -1,14 +1,14 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy import Column, String, Integer, DateTime, func, ForeignKey, BOOLEAN
-import uuid
+from app_creation import app
 
-engine = create_engine('postgresql://postgres:12121987@127.0.0.1:5432/flask_db')
-# engine = create_engine('postgresql://postgres:postgres@127.0.0.1:5431/flask_db')
-Session = sessionmaker(bind=engine)
+PG_DSN = 'postgresql+asyncpg://postgres:12121987@127.0.0.1:5432/async_db'
 
-Base = declarative_base(bind=engine)
+engine = create_async_engine(PG_DSN)
+Session = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+Base = declarative_base()
 
 class User(Base):
     __tablename__ = 'users'
@@ -17,7 +17,7 @@ class User(Base):
     username = Column(String, nullable=False, unique=True, index=True)
     password = Column(String, nullable=False)
     email = Column(String, nullable=False, unique=True, index=True)
-    is_admin = Column(BOOLEAN, nullable=False, default=False)
+    posts = relationship('UserPost', back_populates="user", lazy='joined')
     
 class UserPost(Base):
     __tablename__ = 'user_posts'
@@ -27,5 +27,12 @@ class UserPost(Base):
     post_header = Column(String, nullable=False)
     post_text = Column(String, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+    user = relationship('User', back_populates="posts")
     
-Base.metadata.create_all()
+
+
+async def orm_context(app):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield 
+    await engine.dispose()
